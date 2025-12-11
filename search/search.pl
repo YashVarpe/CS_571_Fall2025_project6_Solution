@@ -1,61 +1,64 @@
-:- use_module(library(lists)).
-
-%%%%%%%%%%%%%%%%%%%%%%
-% Your code goes here:
-%%%%%%%%%%%%%%%%%%%%%%
-
 search(Actions) :-
     initial(StartRoom),
-    % 1. Collect any keys present in the start room immediately
-    findall(K, key(StartRoom, K), StartKeys),
-    sort(StartKeys, InitialKeys),
-    % 2. Start BFS: Queue = [[State, Path]], Visited = [State]
-    % State is defined as state(Room, KeysHeld)
-    bfs([[state(StartRoom, InitialKeys), []]], [state(StartRoom, InitialKeys)], Actions).
+    % Initial state: StartRoom with keys found in that room
+    get_keys(StartRoom, [], InitialKeys),
+    % BFS Queue: List of [CurrentRoom, CurrentKeys, PathSoFar]
+    % Visited: List of visited(Room, Keys) to prevent cycles
+    bfs([[StartRoom, InitialKeys, []]], [visited(StartRoom, InitialKeys)], Actions).
 
-% Base Case: Found the treasure
-bfs([[state(Room, _), Path]|_], _, Path) :-
+% Base Case: Reached the treasure
+bfs([[Room, _Keys, Path] | _], _, Actions) :-
     treasure(Room),
-    !. % Cut to stop searching once the shortest path is found
+    my_reverse(Path, Actions).
 
-% Recursive Step: Expand BFS
-bfs([ [state(Room, Keys), Path] | RestQueue], Visited, Actions) :-
+% Recursive Step: Expand the queue
+bfs([[Room, Keys, Path] | RestQueue], Visited, Actions) :-
     findall(
-        [state(NextRoom, NewKeys), NewPath],
+        [NextRoom, NextKeys, [move(Room, NextRoom) | Path]],
         (
-            % A. Find a reachable room
-            (
-                % Open door (either direction)
-                (door(Room, NextRoom); door(NextRoom, Room))
-            ;
-                % Locked door (either direction) - requires key
-                (locked_door(Room, NextRoom, Color); locked_door(NextRoom, Room, Color)),
-                member(Color, Keys)
-            ),
-            
-            % B. Collect keys in the new room
-            findall(K, key(NextRoom, K), FoundKeys),
-            append(FoundKeys, Keys, UnsortedKeys),
-            sort(UnsortedKeys, NewKeys), % Sort to keep state canonical
-            
-            % C. Ensure state (Room + Keys) is not visited
-            \+ member(state(NextRoom, NewKeys), Visited),
-            
-            % D. Update Path
-            append(Path, [move(Room, NextRoom)], NewPath)
+            % 1. Check valid move (door or unlocked door)
+            can_move(Room, NextRoom, Keys),
+            % 2. Update keys (collect new keys from NextRoom)
+            get_keys(NextRoom, Keys, NextKeys),
+            % 3. Check if this state (Room + Keys) has been visited
+            \+ my_member(visited(NextRoom, NextKeys), Visited)
         ),
-        Children
+        NewStates
     ),
-    
-    % Update Visited list and Queue
-    extract_states(Children, ChildStates),
-    append(Visited, ChildStates, NewVisited),
-    append(RestQueue, Children, NewQueue),
-    
-    % Continue Search
-    bfs(NewQueue, NewVisited, Actions).
+    extract_visited(NewStates, NewVisited),
+    my_append(Visited, NewVisited, UpdatedVisited),
+    my_append(RestQueue, NewStates, NewQueue),
+    bfs(NewQueue, UpdatedVisited, Actions).
 
-% Helper: Extract just the state(...) part from the queue items
-extract_states([], []).
-extract_states([[State, _]|T], [State|Rest]) :-
-    extract_states(T, Rest).
+% Determines if we can move between two rooms
+can_move(A, B, _) :- door(A, B).
+can_move(A, B, _) :- door(B, A).
+can_move(A, B, Keys) :- locked_door(A, B, Color), my_member(Color, Keys).
+can_move(A, B, Keys) :- locked_door(B, A, Color), my_member(Color, Keys).
+
+% Collects keys in the current room and updates the key list
+get_keys(Room, CurrentKeys, SortedKeys) :-
+    findall(K, key(Room, K), RoomKeys),
+    my_append(CurrentKeys, RoomKeys, AllKeys),
+    sort(AllKeys, SortedKeys). % sort is standard ISO Prolog, usually safe
+
+extract_visited([], []).
+extract_visited([[R, K, _] | T], [visited(R, K) | VT]) :-
+    extract_visited(T, VT).
+
+% ---------------------------------------------------------
+% Custom List Utilities (To avoid module import errors)
+% ---------------------------------------------------------
+
+% my_member(Element, List)
+my_member(X, [X|_]).
+my_member(X, [_|T]) :- my_member(X, T).
+
+% my_append(List1, List2, Result)
+my_append([], L, L).
+my_append([H|T], L, [H|R]) :- my_append(T, L, R).
+
+% my_reverse(List, ReversedList)
+my_reverse(L, R) :- my_reverse_acc(L, [], R).
+my_reverse_acc([], A, A).
+my_reverse_acc([H|T], A, R) :- my_reverse_acc(T, [H|A], R).
