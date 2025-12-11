@@ -41,3 +41,13 @@ get_keys(Room, CurrentKeys, SortedKeys) :-
 extract_visited([], []).
 extract_visited([[R, K, _] | T], [visited(R, K) | VT]) :-
     extract_visited(T, VT).
+    
+my_member(X, [X|_]).
+my_member(X, [_|T]) :- my_member(X, T).
+
+my_append([], L, L).
+my_append([H|T], L, [H|R]) :- my_append(T, L, R).
+
+my_reverse(L, R) :- my_reverse_acc(L, [], R).
+my_reverse_acc([], A, A).
+my_reverse_acc([H|T], A, R) :- my_reverse_acc(T, [H|A], R).
