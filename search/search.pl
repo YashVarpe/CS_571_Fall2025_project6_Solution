@@ -1,60 +1,61 @@
+:- use_module(library(lists)).
+
 %%%%%%%%%%%%%%%%%%%%%%
 % Your code goes here:
 %%%%%%%%%%%%%%%%%%%%%%
 
 search(Actions) :-
     initial(StartRoom),
-    % BFS Queue Item: [state(Room, Keys), Path]
-    % Initial State: Room=StartRoom, Keys=[], Path=[]
-    % Visited List: [state(Room, Keys)]
-    bfs([[state(StartRoom, []), []]], [state(StartRoom, [])], Actions).
+    % 1. Collect any keys present in the start room immediately
+    findall(K, key(StartRoom, K), StartKeys),
+    sort(StartKeys, InitialKeys),
+    % 2. Start BFS: Queue = [[State, Path]], Visited = [State]
+    % State is defined as state(Room, KeysHeld)
+    bfs([[state(StartRoom, InitialKeys), []]], [state(StartRoom, InitialKeys)], Actions).
 
-% Base Case: If the first state in the queue is the treasure room, we are done.
+% Base Case: Found the treasure
 bfs([[state(Room, _), Path]|_], _, Path) :-
-    treasure(Room).
+    treasure(Room),
+    !. % Cut to stop searching once the shortest path is found
 
-% Recursive Step: Expand the current node
+% Recursive Step: Expand BFS
 bfs([ [state(Room, Keys), Path] | RestQueue], Visited, Actions) :-
     findall(
         [state(NextRoom, NewKeys), NewPath],
         (
-            % 1. Find a connected room (graph is undirected)
-            (door(Room, NextRoom); door(NextRoom, Room)),
-            
-            % 2. Check if the door is passable (not locked, or have key)
-            ( (locked_door(Room, NextRoom, Color); locked_door(NextRoom, Room, Color)) ->
+            % A. Find a reachable room
+            (
+                % Open door (either direction)
+                (door(Room, NextRoom); door(NextRoom, Room))
+            ;
+                % Locked door (either direction) - requires key
+                (locked_door(Room, NextRoom, Color); locked_door(NextRoom, Room, Color)),
                 member(Color, Keys)
-            ;
-                true
             ),
             
-            % 3. Update keys if the new room has a key
-            (key(NextRoom, KeyColor) ->
-                sort([KeyColor | Keys], NewKeys) % sort handles uniqueness
-            ;
-                NewKeys = Keys
-            ),
+            % B. Collect keys in the new room
+            findall(K, key(NextRoom, K), FoundKeys),
+            append(FoundKeys, Keys, UnsortedKeys),
+            sort(UnsortedKeys, NewKeys), % Sort to keep state canonical
             
-            % 4. Ensure this specific state (Room + Keys) hasn't been visited
+            % C. Ensure state (Room + Keys) is not visited
             \+ member(state(NextRoom, NewKeys), Visited),
             
-            % 5. Append move to the path
+            % D. Update Path
             append(Path, [move(Room, NextRoom)], NewPath)
         ),
         Children
     ),
     
-    % Update Visited list with new states to prevent cycles/redundancy
+    % Update Visited list and Queue
     extract_states(Children, ChildStates),
     append(Visited, ChildStates, NewVisited),
-    
-    % Add new paths to the end of the queue (BFS behavior)
     append(RestQueue, Children, NewQueue),
     
-    % Continue search
+    % Continue Search
     bfs(NewQueue, NewVisited, Actions).
 
-% Helper to extract just the state objects from the queue items for the Visited list
+% Helper: Extract just the state(...) part from the queue items
 extract_states([], []).
 extract_states([[State, _]|T], [State|Rest]) :-
     extract_states(T, Rest).
